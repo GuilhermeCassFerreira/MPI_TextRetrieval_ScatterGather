@@ -1,1 +1,1 @@
-# scatter-gather
+# MPI_TextRetrieval_ScatterGather
