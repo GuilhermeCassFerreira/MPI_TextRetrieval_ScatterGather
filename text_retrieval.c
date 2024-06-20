@@ -3,26 +3,29 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_WORDS 100 // Número máximo de palavras na frase de busca
-#define MAX_WORD_LENGTH 256 // Comprimento máximo de cada palavra
+#define MAX_WORDS 100
+#define MAX_WORD_LENGTH 256
 #define MAX_FILES 100
 #define MAX_FILENAME_LENGTH 256
 
 // Função para contar ocorrências de uma palavra em um arquivo
 int count_occurrences(const char* filename, const char* word) {
     FILE *file = fopen(filename, "r");
-    if (!file) return -1; // Retorna -1 se não conseguir abrir o arquivo
+    if (!file) {
+        fprintf(stderr, "Erro ao abrir o arquivo %s\n", filename);
+        return -1;
+    }
     
     int count = 0;
     char temp[512];
-    while (fscanf(file, "%s", temp) != EOF) { // Lê cada palavra do arquivo
+    while (fscanf(file, "%511s", temp) != EOF) { // Lê cada palavra do arquivo
         if (strcmp(temp, word) == 0) { // Compara com a palavra buscada
-            count++; // Incrementa o contador se encontrar a palavra
+            count++;
         }
     }
     
-    fclose(file); // Fecha o arquivo
-    return count; // Retorna o número de ocorrências
+    fclose(file);
+    return count;
 }
 
 // Função para dividir a frase em palavras
@@ -30,9 +33,11 @@ void split_phrase(char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], int* num
     char* token = strtok(phrase, " ");
     *num_words = 0;
     while (token != NULL) {
-        strncpy(words[*num_words], token, MAX_WORD_LENGTH);
-        words[*num_words][MAX_WORD_LENGTH - 1] = '\0'; // Garantir terminação correta da string
-        (*num_words)++;
+        if (*num_words < MAX_WORDS) {
+            strncpy(words[*num_words], token, MAX_WORD_LENGTH - 1);
+            words[*num_words][MAX_WORD_LENGTH - 1] = '\0'; // Garantir terminação correta da string
+            (*num_words)++;
+        }
         token = strtok(NULL, " ");
     }
 }
@@ -53,8 +58,8 @@ int main(int argc, char** argv) {
     }
 
     char search_phrase[1024];
-    strncpy(search_phrase, argv[1], 1024); // Copia a frase de busca
-    search_phrase[1023] = '\0'; // Garantir terminação correta da string
+    strncpy(search_phrase, argv[1], sizeof(search_phrase) - 1);
+    search_phrase[sizeof(search_phrase) - 1] = '\0'; // Garantir terminação correta da string
 
     char words[MAX_WORDS][MAX_WORD_LENGTH];
     int num_words;
@@ -62,14 +67,19 @@ int main(int argc, char** argv) {
     // Processo mestre divide a frase em palavras e distribui
     if (rank == 0) {
         split_phrase(search_phrase, words, &num_words);
+        printf("Nó raiz dividindo a frase em palavras...\n");
 
         // Envia a quantidade de palavras e a lista de palavras para todos os processos
         MPI_Bcast(&num_words, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        printf("Nó raiz enviando quantidade de palavras (%d) para todos os processos\n", num_words);
         MPI_Bcast(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
+        printf("Nó raiz enviando palavras para todos os processos\n");
     } else {
         // Processos réplicas recebem a quantidade de palavras e a lista de palavras
         MPI_Bcast(&num_words, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        printf("Processo %d recebeu %d palavras do nó raiz\n", rank, num_words);
         MPI_Bcast(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
+        printf("Processo %d recebeu a lista de palavras do nó raiz\n", rank);
     }
 
     char filenames[MAX_FILES][MAX_FILENAME_LENGTH];
@@ -77,18 +87,22 @@ int main(int argc, char** argv) {
 
     if (rank == 0) { // Processo mestre
         // Especifica os caminhos dos arquivos a serem buscados
-        strcpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file1.txt");
-        strcpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file2.txt");
+        strncpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file1.txt", MAX_FILENAME_LENGTH - 1);
+        strncpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file2.txt", MAX_FILENAME_LENGTH - 1);
         // Adicionar mais arquivos conforme necessário
 
         // Envia o número de arquivos para todos os processos
         MPI_Bcast(&num_files, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        printf("Nó raiz enviando quantidade de arquivos (%d) para todos os processos\n", num_files);
         // Envia os nomes dos arquivos para todos os processos
         MPI_Bcast(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
+        printf("Nó raiz enviando lista de arquivos para todos os processos\n");
     } else {
         // Processos réplicas recebem o número de arquivos e nomes dos arquivos
         MPI_Bcast(&num_files, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        printf("Processo %d recebeu %d arquivos do nó raiz\n", rank, num_files);
         MPI_Bcast(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
+        printf("Processo %d recebeu a lista de arquivos do nó raiz\n", rank);
     }
 
     // Cada processo conta ocorrências em sua parte dos arquivos
@@ -103,6 +117,7 @@ int main(int argc, char** argv) {
     for (i = start; i < end; i++) {
         for (int j = 0; j < num_words; j++) {
             occurrences[i * num_words + j] = count_occurrences(filenames[i], words[j]);
+            printf("Processo %d contou %d ocorrências da palavra '%s' no arquivo '%s'\n", rank, occurrences[i * num_words + j], words[j], filenames[i]);
         }
     }
 
@@ -114,6 +129,7 @@ int main(int argc, char** argv) {
     
     // Reduz os dados (soma as ocorrências de todos os processos) no processo raiz
     MPI_Reduce(occurrences, all_occurrences, num_files * num_words, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    printf("Processo %d enviou seus resultados ao nó raiz\n", rank);
 
     if (rank == 0) {
         // Imprime os resultados no processo raiz
