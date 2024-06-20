@@ -17,8 +17,8 @@ int count_occurrences(const char* filename, const char* word) {
     }
     
     int count = 0;
-    char temp[512];
-    while (fscanf(file, "%511s", temp) != EOF) { // Lê cada palavra do arquivo
+    char temp[MAX_WORD_LENGTH];
+    while (fscanf(file, "%255s", temp) == 1) { // Lê cada palavra do arquivo
         if (strcmp(temp, word) == 0) { // Compara com a palavra buscada
             count++;
         }
@@ -116,7 +116,12 @@ int main(int argc, char** argv) {
     // Conta as ocorrências nos arquivos atribuídos a este processo
     for (i = start; i < end; i++) {
         for (int j = 0; j < num_words; j++) {
-            occurrences[i * num_words + j] = count_occurrences(filenames[i], words[j]);
+            int count = count_occurrences(filenames[i], words[j]);
+            if (count == -1) {
+                // tratamento de erro ao contar ocorrências
+                MPI_Abort(MPI_COMM_WORLD, 1);
+            }
+            occurrences[i * num_words + j] = count;
             printf("Processo %d contou %d ocorrências da palavra '%s' no arquivo '%s'\n", rank, occurrences[i * num_words + j], words[j], filenames[i]);
         }
     }
@@ -125,6 +130,10 @@ int main(int argc, char** argv) {
     int* all_occurrences = NULL;
     if (rank == 0) {
         all_occurrences = calloc(num_files * num_words, sizeof(int)); // Vetor para armazenar todas as ocorrências
+        if (!all_occurrences) {
+            fprintf(stderr, "Erro de alocação de memória para all_occurrences\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
     }
     
     // Reduz os dados (soma as ocorrências de todos os processos) no processo raiz
@@ -145,6 +154,3 @@ int main(int argc, char** argv) {
     MPI_Finalize(); // Finaliza o ambiente MPI
     return 0;
 }
-
-// Compilar: mpicc -o search_mpi search_mpi.c
-// Executar: mpirun -np 4 ./search_mpi "frase de busca"
