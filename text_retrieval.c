@@ -28,18 +28,36 @@ int count_occurrences(const char* filename, const char* word) {
     return count;
 }
 
-// Função para dividir a frase em palavras
-void split_phrase(char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], int* num_words) {
-    char* token = strtok(phrase, " ");
+void split_phrase(const char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], int* num_words) {
+    char* temp_phrase = strdup(phrase); 
+    char* token = strtok(temp_phrase, " "); 
     *num_words = 0;
+    
     while (token != NULL) {
         if (*num_words < MAX_WORDS) {
             strncpy(words[*num_words], token, MAX_WORD_LENGTH - 1);
-            words[*num_words][MAX_WORD_LENGTH - 1] = '\0'; // Garantir terminação correta da string
-            (*num_words)++;
+            words[*num_words][MAX_WORD_LENGTH - 1] = '\0'; 
         }
         token = strtok(NULL, " ");
     }
+
+    free(temp_phrase); // Libera a memória alocada pela strdup
+}
+
+// Função para ler endereços das réplicas a partir de um arquivo de configuração
+void read_replica_addresses(const char* filename, char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH], int* num_replicas) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "Erro ao abrir o arquivo de réplicas %s\n", filename);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    
+    *num_replicas = 0;
+    while (fscanf(file, "%255s", replica_addresses[*num_replicas]) == 1 && *num_replicas < MAX_FILES) {
+        (*num_replicas)++;
+    }
+    
+    fclose(file);
 }
 
 int main(int argc, char** argv) {
@@ -86,6 +104,11 @@ int main(int argc, char** argv) {
     int num_files = 0;
 
     if (rank == 0) { // Processo mestre
+        // Ler endereços das réplicas a partir de um arquivo de configuração
+        char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH];
+        int num_replicas;
+        read_replica_addresses("replicas.config", replica_addresses, &num_replicas);
+
         // Especifica os caminhos dos arquivos a serem buscados
         strncpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file1.txt", MAX_FILENAME_LENGTH - 1);
         strncpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file2.txt", MAX_FILENAME_LENGTH - 1);
