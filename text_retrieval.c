@@ -69,17 +69,25 @@ int main(int argc, char** argv) {
         split_phrase(search_phrase, words, &num_words);
         printf("Nó raiz dividindo a frase em palavras...\n");
 
-        // Envia a quantidade de palavras e a lista de palavras para todos os processos
-        MPI_Bcast(&num_words, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        printf("Nó raiz enviando quantidade de palavras (%d) para todos os processos\n", num_words);
-        MPI_Bcast(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
-        printf("Nó raiz enviando palavras para todos os processos\n");
+        // Envia a quantidade de palavras para todos os processos réplicas
+        for (i = 1; i < size; i++) {
+            MPI_Send(&num_words, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            printf("Nó raiz enviou quantidade de palavras (%d) para o processo %d\n", num_words, i);
+        }
+
+        // Envia as palavras para todos os processos réplicas
+        for (i = 1; i < size; i++) {
+            MPI_Send(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, i, 0, MPI_COMM_WORLD);
+            printf("Nó raiz enviou palavras para o processo %d\n", i);
+        }
     } else {
-        // Processos réplicas recebem a quantidade de palavras e a lista de palavras
-        MPI_Bcast(&num_words, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        printf("Processo %d recebeu %d palavras do nó raiz\n", rank, num_words);
-        MPI_Bcast(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
-        printf("Processo %d recebeu a lista de palavras do nó raiz\n", rank);
+        // Processos réplicas recebem a quantidade de palavras
+        MPI_Recv(&num_words, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Processo %d recebeu quantidade de palavras (%d) do nó raiz\n", rank, num_words);
+
+        // Processos réplicas recebem as palavras
+        MPI_Recv(words, num_words * MAX_WORD_LENGTH, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Processo %d recebeu as palavras do nó raiz\n", rank);
     }
 
     char filenames[MAX_FILES][MAX_FILENAME_LENGTH];
@@ -91,18 +99,25 @@ int main(int argc, char** argv) {
         strncpy(filenames[num_files++], "/home/bridge/MPI_TextRetrieval_ScatterGather/file2.txt", MAX_FILENAME_LENGTH - 1);
         // Adicionar mais arquivos conforme necessário
 
-        // Envia o número de arquivos para todos os processos
-        MPI_Bcast(&num_files, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        printf("Nó raiz enviando quantidade de arquivos (%d) para todos os processos\n", num_files);
-        // Envia os nomes dos arquivos para todos os processos
-        MPI_Bcast(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
-        printf("Nó raiz enviando lista de arquivos para todos os processos\n");
+        // Envia o número de arquivos para todos os processos réplicas
+        for (i = 1; i < size; i++) {
+            MPI_Send(&num_files, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            printf("Nó raiz enviou quantidade de arquivos (%d) para o processo %d\n", num_files, i);
+        }
+
+        // Envia os nomes dos arquivos para todos os processos réplicas
+        for (i = 1; i < size; i++) {
+            MPI_Send(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, i, 0, MPI_COMM_WORLD);
+            printf("Nó raiz enviou lista de arquivos para o processo %d\n", i);
+        }
     } else {
-        // Processos réplicas recebem o número de arquivos e nomes dos arquivos
-        MPI_Bcast(&num_files, 1, MPI_INT, 0, MPI_COMM_WORLD);
-        printf("Processo %d recebeu %d arquivos do nó raiz\n", rank, num_files);
-        MPI_Bcast(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
-        printf("Processo %d recebeu a lista de arquivos do nó raiz\n", rank);
+        // Processos réplicas recebem o número de arquivos
+        MPI_Recv(&num_files, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Processo %d recebeu quantidade de arquivos (%d) do nó raiz\n", rank, num_files);
+
+        // Processos réplicas recebem os nomes dos arquivos
+        MPI_Recv(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Processo %d recebeu lista de arquivos do nó raiz\n", rank);
     }
 
     // Cada processo conta ocorrências em sua parte dos arquivos
@@ -126,31 +141,36 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Recolhe os resultados no nó raiz
-    int* all_occurrences = NULL;
-    if (rank == 0) {
-        all_occurrences = calloc(num_files * num_words, sizeof(int)); // Vetor para armazenar todas as ocorrências
-        if (!all_occurrences) {
-            fprintf(stderr, "Erro de alocação de memória para all_occurrences\n");
-            MPI_Abort(MPI_COMM_WORLD, 1);
+    // Envia os resultados de volta para o processo raiz
+    if (rank != 0) {
+        MPI_Send(occurrences, num_files * num_words, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        printf("Processo %d enviou seus resultados ao nó raiz\n", rank);
+    } else {
+        // Processo raiz recebe resultados dos processos réplicas
+        for (i = 1; i < size; i++) {
+            MPI_Recv(occurrences + i * files_per_process * num_words, files_per_process * num_words, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            printf("Nó raiz recebeu resultados do processo %d\n", i);
         }
-    }
-    
-    // Reduz os dados (soma as ocorrências de todos os processos) no processo raiz
-    MPI_Reduce(occurrences, all_occurrences, num_files * num_words, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
-    printf("Processo %d enviou seus resultados ao nó raiz\n", rank);
 
-    if (rank == 0) {
-        // Imprime os resultados no processo raiz
+        // Se houver arquivos extras, recebemos do último processo
+        if (extra_files > 0) {
+            MPI_Recv(occurrences + size * files_per_process * num_words, extra_files * num_words, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            printf("Nó raiz recebeu resultados do processo %d\n", size - 1);
+        }
+
+        // Processo raiz imprime os resultados
+        for (int j = 0; j < num_files; j++) {
+           
+        // Processo raiz imprime os resultados
         for (int j = 0; j < num_files; j++) {
             for (int k = 0; k < num_words; k++) {
-                printf("Arquivo: %s, Palavra: %s, Ocorrências: %d\n", filenames[j], words[k], all_occurrences[j * num_words + k]);
+                printf("Arquivo: %s, Palavra: %s, Ocorrências: %d\n", filenames[j], words[k], occurrences[j * num_words + k]);
             }
         }
-        free(all_occurrences); // Libera memória alocada
     }
 
     free(occurrences); // Libera memória alocada
+
     MPI_Finalize(); // Finaliza o ambiente MPI
     return 0;
 }
