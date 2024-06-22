@@ -41,10 +41,9 @@ void split_phrase(const char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], in
         token = strtok(NULL, " ");
     }
 
-    free(temp_phrase); // Libera a memória alocada pela strdup
+    free(temp_phrase); //
 }
 
-// Função para ler endereços das réplicas a partir de um arquivo de configuração
 void read_replica_addresses(const char* filename, char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH], int* num_replicas) {
     FILE *file = fopen(filename, "r");
     if (!file) {
@@ -104,7 +103,6 @@ int main(int argc, char** argv) {
     int num_files = 0;
 
     if (rank == 0) { // Processo mestre
-        // Ler endereços das réplicas a partir de um arquivo de configuração
         char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH];
         int num_replicas;
         read_replica_addresses("replicas.config", replica_addresses, &num_replicas);
