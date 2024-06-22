@@ -37,11 +37,12 @@ void split_phrase(const char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], in
         if (*num_words < MAX_WORDS) {
             strncpy(words[*num_words], token, MAX_WORD_LENGTH - 1);
             words[*num_words][MAX_WORD_LENGTH - 1] = '\0'; 
+            (*num_words)++;
         }
         token = strtok(NULL, " ");
     }
 
-    free(temp_phrase); //
+    free(temp_phrase); 
 }
 
 void read_replica_addresses(const char* filename, char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH], int* num_replicas) {
@@ -103,6 +104,7 @@ int main(int argc, char** argv) {
     int num_files = 0;
 
     if (rank == 0) { // Processo mestre
+        // Ler endereços das réplicas a partir de um arquivo de configuração
         char replica_addresses[MAX_FILES][MAX_FILENAME_LENGTH];
         int num_replicas;
         read_replica_addresses("replicas.config", replica_addresses, &num_replicas);
@@ -118,7 +120,7 @@ int main(int argc, char** argv) {
         // Envia os nomes dos arquivos para todos os processos
         MPI_Bcast(filenames, num_files * MAX_FILENAME_LENGTH, MPI_CHAR, 0, MPI_COMM_WORLD);
         printf("Nó raiz enviando lista de arquivos para todos os processos\n");
-    } else {
+  } else {
         // Processos réplicas recebem o número de arquivos e nomes dos arquivos
         MPI_Bcast(&num_files, 1, MPI_INT, 0, MPI_COMM_WORLD);
         printf("Processo %d recebeu %d arquivos do nó raiz\n", rank, num_files);
