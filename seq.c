@@ -1,4 +1,3 @@
-#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,15 +7,6 @@
 #define MAX_FILES 100
 #define MAX_FILENAME_LENGTH 256
 #define MAX_PHRASE_LENGTH 1024
-
-typedef struct response_per_file {
-  char filename[MAX_FILENAME_LENGTH];
-  int count;
-} response_per_file_t;
-
-typedef struct response {
-  response_per_file_t responses_per_file[MAX_FILES];
-} response_t;
 
 int count_occurrences(const char* filename, const char* word) {
   FILE *file = fopen(filename, "r");
@@ -52,32 +42,8 @@ void split_phrase(char* phrase, char words[MAX_WORDS][MAX_WORD_LENGTH], int* num
   }
 }
 
-void scatter(int rank, char words[MAX_WORDS][MAX_WORD_LENGTH], int num_words) {
-  if (rank == 0) {
-    for (int word = 0; word < num_words; word++) {
-      MPI_Send(words[word], MAX_WORD_LENGTH, MPI_CHAR, word, 0, MPI_COMM_WORLD);
-    }
-  } else {
-    MPI_Recv(words[rank - 1], MAX_WORD_LENGTH, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-}
-
-void gather(response_t* response, response_t* responses, int rank, int size) {
-  if (rank == 0) {
-    for (int i = 1; i < size; i++) {
-      MPI_Recv(&responses[i], sizeof(response_t), MPI_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
-  } else {
-    MPI_Send(response, sizeof(response_t), MPI_CHAR, 0, 0, MPI_COMM_WORLD);
-  }
-
-  MPI_Barrier(MPI_COMM_WORLD);
-}
-
 int main(int argc, char** argv) {
-  int rank, size, num_words, num_files = 0;
+  int num_words, num_files = 0;
   char search_phrase[MAX_PHRASE_LENGTH];
   char words[MAX_WORDS][MAX_WORD_LENGTH];
   char filenames[MAX_FILES][MAX_FILENAME_LENGTH];
@@ -87,11 +53,6 @@ int main(int argc, char** argv) {
     fprintf(stderr, "Uso: %s <texto_de_busca>\n", argv[0]);
     return 1;
   }
-
-  MPI_Init(&argc, &argv);
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
   // argv[1] = "programacao paralela e distribuida"
 
   // copia o input de texto para a variável search_phrase
@@ -123,33 +84,17 @@ int main(int argc, char** argv) {
   // *words[2] enviar para rank 3
   // *words[3] enviar para rank 4
 
-  scatter(rank, words, num_words);
-
   // para word[x], file[a] = count_occurrences(filenames[y], words[x])
   // para word[x], file[b] = count_occurrences(filenames[y], words[x])
   // para word[y], file[a] = count_occurrences(filenames[y], words[x])
   // para word[y], file[b] = count_occurrences(filenames[y], words[x])
 
-  response_t response;
-
-  printf("Réplica %d com a palavra '%s'\n", rank, words[rank]);
   for (int i = 0; i < num_files; i++) {
-    response_per_file_t response_per_file;
-    occurrences[i * num_words + rank] = count_occurrences(filenames[i], words[rank]);
-    printf("('%s', %d) ('%s')\n", filenames[i], occurrences[i * num_words + rank], words[rank]);
-
-    strcpy(response_per_file.filename, filenames[i]);
-    response_per_file.count = occurrences[i * num_words + rank];
-    response.responses_per_file[i] = response_per_file;
+    for (int j = 0; j < num_words; j++) {
+      occurrences[i * num_words + j] = count_occurrences(filenames[i], words[j]);
+      printf("('%s', %d) ('%s')\n", filenames[i], occurrences[i * num_words + j], words[j]);
+    }
   }
-
-  response_t* responses = NULL;
-
-  if (rank == 0) {
-    responses = malloc(num_words * num_files * sizeof(response_t));
-  }
-
-  gather(&response, responses, rank, size);
 
   // O arquivo ./file1.txt contém 5 ocorrências da palavra 'exemplo'
   // O arquivo ./file1.txt contém 1 ocorrências da palavra 'texto'
@@ -164,21 +109,17 @@ int main(int argc, char** argv) {
   // "./file2.txt", "Este é um exemplo de arquivo de texto.\n
   // Ele contém palavras aleatórias para teste.\n", 1
 
-  if (rank == 0) {
-    printf("Resultado final\n");
+  printf("Resultado final\n");
 
-    for (int k = 0; k < num_files; k++) {
-      int occurrences_per_file = 0;
-      
-      for (int l = 0; l < num_words; l++) {
-        occurrences_per_file += occurrences[k * num_words + l];
-      }
-
-      printf("{'%s',  %d}\n", filenames[k], occurrences_per_file);
+  for (int k = 0; k < num_files; k++) {
+    int ocurrences_per_file = 0;
+    
+    for (int l = 0; l < num_words; l++) {
+      ocurrences_per_file += occurrences[k * num_words + l];
     }
-  }
 
-  MPI_Finalize();
+    printf("{'%s',  %d}\n", filenames[k], ocurrences_per_file);
+  }
 
   free(occurrences);
 
