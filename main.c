@@ -56,9 +56,11 @@ void scatter(int rank, char words[MAX_WORDS][MAX_WORD_LENGTH], int num_words) {
   if (rank == 0) {
     for (int word = 0; word < num_words; word++) {
       MPI_Send(words[word], MAX_WORD_LENGTH, MPI_CHAR, word, 0, MPI_COMM_WORLD);
+      printf("Enviando palavra '%s' para a réplica %d\n", words[word], word + 1);
     }
   } else {
     MPI_Recv(words[rank - 1], MAX_WORD_LENGTH, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    printf("Réplica %d recebeu palavra '%s'\n", rank, words[rank - 1]);
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -68,9 +70,11 @@ void gather(response_t* response, response_t* responses, int rank, int size) {
   if (rank == 0) {
     for (int i = 1; i < size; i++) {
       MPI_Recv(&responses[i], sizeof(response_t), MPI_CHAR, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+      printf("Nó raiz recebeu resposta da réplica %d\n", i);
     }
   } else {
     MPI_Send(response, sizeof(response_t), MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+    printf("Enviando resposta para o nó raiz\n");
   }
 
   MPI_Barrier(MPI_COMM_WORLD);
@@ -135,7 +139,7 @@ int main(int argc, char** argv) {
   printf("Réplica %d com a palavra '%s'\n", rank, words[rank]);
   for (int i = 0; i < num_files; i++) {
     response_per_file_t response_per_file;
-    occurrences[i * num_words + rank] = count_occurrences(filenames[i], words[rank]);
+occurrences[i * num_words + rank] = count_occurrences(filenames[i], words[rank]);
     printf("('%s', %d) ('%s')\n", filenames[i], occurrences[i * num_words + rank], words[rank]);
 
     strcpy(response_per_file.filename, filenames[i]);
@@ -150,7 +154,7 @@ int main(int argc, char** argv) {
   }
 
   gather(&response, responses, rank, size);
-
+  
   // O arquivo ./file1.txt contém 5 ocorrências da palavra 'exemplo'
   // O arquivo ./file1.txt contém 1 ocorrências da palavra 'texto'
   // O arquivo ./file2.txt contém 1 ocorrências da palavra 'exemplo'
@@ -176,6 +180,7 @@ int main(int argc, char** argv) {
 
       printf("{'%s',  %d}\n", filenames[k], occurrences_per_file);
     }
+    free(responses);
   }
 
   MPI_Finalize();
