@@ -1,2 +1,1 @@
-Este é um exemplo de arquivo de texto.
-Ele contém palavras aleatórias para teste.
+este e um exemplo de arquivo de texto
